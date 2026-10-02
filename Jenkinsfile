@@ -27,17 +27,15 @@ pipeline {
             }
         }
 
-        stage("Build & Test Application") {
+        stage("Test Application") {
             steps {
-                // Compiles, runs tests, packages the JAR, and produces the JaCoCo XML report in a single pass
-                sh "mvn clean package jacoco:report"
+                // Compiles and runs the tests; jacoco:report is bound to prepare-package in the pom,
+                // so invoke it explicitly to produce target/site/jacoco/jacoco.xml for SonarQube
+                sh "mvn clean test jacoco:report"
             }
             post {
                 always {
                     junit allowEmptyResults: true, testResults: 'target/surefire-reports/TEST-*.xml'
-                }
-                success {
-                    archiveArtifacts artifacts: 'target/spring-petclinic-*.jar', fingerprint: true
                 }
             }
         }
@@ -78,6 +76,20 @@ pipeline {
                                 -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
                         '''
                     }
+                }
+            }
+        }
+
+
+        stage("Build Application") {
+            steps {
+                // Tests already passed in the previous stage. No 'clean', so the test and
+                // coverage reports in target/ are kept for the SonarQube stage.
+                sh "mvn package -DskipTests"
+            }
+            post {
+                success {
+                    archiveArtifacts artifacts: 'target/spring-petclinic-*.jar', fingerprint: true
                 }
             }
         }
