@@ -80,7 +80,10 @@ pipeline {
                         -u root \
                         -v /var/run/docker.sock:/var/run/docker.sock \
                         -v \${WORKSPACE}:/workspace \
+                        -v trivy-cache:/root/.cache \
                         aquasec/trivy:latest image \
+                        --timeout 15m \
+                        --scanners vuln \
                         --format table \
                         --output /workspace/trivy-report.txt \
                         --severity HIGH,CRITICAL \
