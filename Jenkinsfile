@@ -78,19 +78,30 @@ pipeline{
 
 
         stage("Build & Push Docker Image") {
-            steps {
-                script {
-                    docker.withRegistry('',DOCKER_PASS) {
-                        docker_image = docker.build "${IMAGE_NAME}"
-                    }
+        
+        steps {
+            withCredentials([usernamePassword(
+                credentialsId: 'dockerhub', 
+                usernameVariable: 'DOCKER_USER_ID', 
+                passwordVariable: 'DOCKER_USER_PWD'
+            )]) {
+                sh '''
+                    # 1. Authenticate securely
+                    echo "$DOCKER_USER_PWD" | docker login -u "$DOCKER_USER_ID" --password-stdin
 
-                    docker.withRegistry('',DOCKER_PASS) {
-                        docker_image.push("${IMAGE_TAG}")
-                        docker_image.push('latest')
-                    }
-                }
+                    # 2. Build with both version and latest tags
+                    docker build -t ${IMAGE_NAME}:${IMAGE_TAG} -t ${IMAGE_NAME}:latest .
+
+                    # 3. Push both tags
+                    docker push ${IMAGE_NAME}:${IMAGE_TAG}
+                    docker push ${IMAGE_NAME}:latest
+
+                    # 4. Clean up authentication session
+                    docker logout
+                '''
             }
         }
+    }
 
 
         // stage("Quality Gate") {
