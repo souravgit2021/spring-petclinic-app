@@ -21,7 +21,14 @@ pipeline{
 
         stage("Test Application"){
             steps {
-                sh "mvn test"
+                // jacoco:report is bound to prepare-package in the pom, so invoke it explicitly
+                // to produce target/site/jacoco/jacoco.xml for SonarQube coverage
+                sh "mvn clean test jacoco:report"
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true, testResults: 'target/surefire-reports/TEST-*.xml'
+                }
             }
 
         }
@@ -31,7 +38,12 @@ pipeline{
             steps {
                 script {
                     withSonarQubeEnv(credentialsId: 'sonar-token') {
-                        sh 'mvn org.sonarsource.scanner.maven:sonar-maven-plugin:sonar'
+                        sh '''
+                            mvn org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
+                                -Dsonar.java.binaries=target/classes \
+                                -Dsonar.junit.reportPaths=target/surefire-reports \
+                                -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
+                        '''
                     }
                 }
             }
@@ -39,12 +51,12 @@ pipeline{
         }
 
 
-        // stage("Build Application"){
-        //     steps {
-        //         sh "mvn clean package"
-        //     }
+        stage("Build Application"){
+            steps {
+                sh "mvn clean package"
+            }
 
-        // }
+        }
 
 
         // stage("Quality Gate") {
