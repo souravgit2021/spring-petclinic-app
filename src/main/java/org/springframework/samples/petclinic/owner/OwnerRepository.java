@@ -20,6 +20,11 @@ import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+import jakarta.persistence.LockModeType;
 
 /**
  * Repository class for <code>Owner</code> domain objects. All method names are compliant
@@ -58,5 +63,16 @@ public interface OwnerRepository extends JpaRepository<Owner, Integer> {
 	 * input for id)
 	 */
 	Optional<Owner> findById(Integer id);
+
+	/**
+	 * Retrieve an {@link Owner} by id while holding a pessimistic write lock on its row,
+	 * so that concurrent changes to the owner's pets are serialized. Must be called
+	 * within a transaction.
+	 * @param id the id to search for
+	 * @return an {@link Optional} containing the locked {@link Owner} if found
+	 */
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("SELECT owner FROM Owner owner WHERE owner.id = :id")
+	Optional<Owner> findByIdForUpdate(@Param("id") Integer id);
 
 }

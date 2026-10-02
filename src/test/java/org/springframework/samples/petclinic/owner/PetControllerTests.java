@@ -27,6 +27,7 @@ import org.springframework.context.annotation.FilterType;
 import org.springframework.test.context.aot.DisabledInAotMode;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.PlatformTransactionManager;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -67,6 +68,9 @@ class PetControllerTests {
 	@MockitoBean
 	private PetTypeRepository types;
 
+	@MockitoBean
+	private PlatformTransactionManager transactionManager;
+
 	@BeforeEach
 	void setup() {
 		PetType cat = new PetType();
@@ -84,6 +88,7 @@ class PetControllerTests {
 		pet.setName("petty");
 		dog.setName("doggy");
 		given(this.owners.findById(TEST_OWNER_ID)).willReturn(Optional.of(owner));
+		given(this.owners.findByIdForUpdate(TEST_OWNER_ID)).willReturn(Optional.of(owner));
 	}
 
 	@Test

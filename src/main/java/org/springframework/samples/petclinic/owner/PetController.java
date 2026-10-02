@@ -22,6 +22,8 @@ import java.util.Optional;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Controller;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.ui.ModelMap;
 import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
@@ -54,9 +56,13 @@ class PetController {
 
 	private final PetTypeRepository types;
 
-	public PetController(OwnerRepository owners, PetTypeRepository types) {
+	private final TransactionTemplate transactionTemplate;
+
+	public PetController(OwnerRepository owners, PetTypeRepository types,
+			PlatformTransactionManager transactionManager) {
 		this.owners = owners;
 		this.types = types;
+		this.transactionTemplate = new TransactionTemplate(transactionManager);
 	}
 
 	@ModelAttribute("types")
@@ -105,8 +111,8 @@ class PetController {
 	}
 
 	@PostMapping("/pets/new")
-	public String processCreationForm(Owner owner, @Valid Pet pet, BindingResult result,
-			RedirectAttributes redirectAttributes) {
+	public String processCreationForm(@PathVariable("ownerId") int ownerId, Owner owner, @Valid Pet pet,
+			BindingResult result, RedirectAttributes redirectAttributes) {
 
 		if (StringUtils.hasText(pet.getName()) && pet.isNew() && owner.getPet(pet.getName(), true) != null) {
 			result.rejectValue("name", "duplicate", "already exists");
@@ -121,14 +127,17 @@ class PetController {
 			return VIEWS_PETS_CREATE_OR_UPDATE_FORM;
 		}
 
+		boolean added;
 		try {
-			owner.addPet(pet);
-			this.owners.saveAndFlush(owner);
+			added = addPetIfNameAvailable(ownerId, pet);
 		}
 		catch (DataIntegrityViolationException ex) {
 			if (!isDuplicatePetNameViolation(ex)) {
 				throw ex;
 			}
+			added = false;
+		}
+		if (!added) {
 			result.rejectValue("name", "duplicate", "already exists");
 			return VIEWS_PETS_CREATE_OR_UPDATE_FORM;
 		}
@@ -142,8 +151,8 @@ class PetController {
 	}
 
 	@PostMapping("/pets/{petId}/edit")
-	public String processUpdateForm(Owner owner, @Valid Pet pet, BindingResult result,
-			RedirectAttributes redirectAttributes) {
+	public String processUpdateForm(@PathVariable("ownerId") int ownerId, Owner owner, @Valid Pet pet,
+			BindingResult result, RedirectAttributes redirectAttributes) {
 
 		String petName = pet.getName();
 
@@ -164,13 +173,17 @@ class PetController {
 			return VIEWS_PETS_CREATE_OR_UPDATE_FORM;
 		}
 
+		boolean updated;
 		try {
-			updatePetDetails(owner, pet);
+			updated = updatePetDetails(ownerId, pet);
 		}
 		catch (DataIntegrityViolationException ex) {
 			if (!isDuplicatePetNameViolation(ex)) {
 				throw ex;
 			}
+			updated = false;
+		}
+		if (!updated) {
 			result.rejectValue("name", "duplicate", "already exists");
 			return VIEWS_PETS_CREATE_OR_UPDATE_FORM;
 		}
@@ -179,24 +192,61 @@ class PetController {
 	}
 
 	/**
-	 * Updates the pet details if it exists or adds a new pet to the owner.
-	 * @param owner The owner of the pet
-	 * @param pet The pet with updated details
+	 * Adds a new pet to the owner unless another pet of that owner already has the same
+	 * name. The owner is re-read under a row lock so that the check and the insert are
+	 * atomic with respect to concurrent requests for the same owner; merging the detached
+	 * form owner instead would silently unlink pets added in the meantime.
+	 * @param ownerId The id of the owner
+	 * @param pet The new pet
+	 * @return {@code false} if the name is already in use
 	 */
-	private void updatePetDetails(Owner owner, Pet pet) {
+	private boolean addPetIfNameAvailable(int ownerId, Pet pet) {
+		return Boolean.TRUE.equals(this.transactionTemplate.execute(status -> {
+			Owner lockedOwner = findOwnerForUpdate(ownerId);
+			if (lockedOwner.getPet(pet.getName(), true) != null) {
+				return false;
+			}
+			lockedOwner.addPet(pet);
+			this.owners.saveAndFlush(lockedOwner);
+			return true;
+		}));
+	}
+
+	/**
+	 * Updates the pet details if it exists or adds a new pet to the owner, unless another
+	 * pet of that owner already has the same name. The owner is re-read under a row lock,
+	 * see {@link #addPetIfNameAvailable(int, Pet)}.
+	 * @param ownerId The id of the owner
+	 * @param pet The pet with updated details
+	 * @return {@code false} if the name is already in use by another pet
+	 */
+	private boolean updatePetDetails(int ownerId, Pet pet) {
 		Integer id = pet.getId();
 		Assert.state(id != null, "'pet.getId()' must not be null");
-		Pet existingPet = owner.getPet(id);
-		if (existingPet != null) {
-			// Update existing pet's properties
-			existingPet.setName(pet.getName());
-			existingPet.setBirthDate(pet.getBirthDate());
-			existingPet.setType(pet.getType());
-		}
-		else {
-			owner.addPet(pet);
-		}
-		this.owners.saveAndFlush(owner);
+		return Boolean.TRUE.equals(this.transactionTemplate.execute(status -> {
+			Owner lockedOwner = findOwnerForUpdate(ownerId);
+			Pet sameNamePet = lockedOwner.getPet(pet.getName(), false);
+			if (sameNamePet != null && !Objects.equals(sameNamePet.getId(), id)) {
+				return false;
+			}
+			Pet existingPet = lockedOwner.getPet(id);
+			if (existingPet != null) {
+				// Update existing pet's properties
+				existingPet.setName(pet.getName());
+				existingPet.setBirthDate(pet.getBirthDate());
+				existingPet.setType(pet.getType());
+			}
+			else {
+				lockedOwner.addPet(pet);
+			}
+			this.owners.saveAndFlush(lockedOwner);
+			return true;
+		}));
+	}
+
+	private Owner findOwnerForUpdate(int ownerId) {
+		return this.owners.findByIdForUpdate(ownerId)
+			.orElseThrow(() -> new IllegalArgumentException("Owner not found with id: " + ownerId));
 	}
 
 	private boolean isDuplicatePetNameViolation(DataIntegrityViolationException ex) {
