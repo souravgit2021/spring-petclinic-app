@@ -1,0 +1,3 @@
+# The image only needs the packaged jar; keep the build context small
+*
+!target/*.jar

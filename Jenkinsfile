@@ -4,6 +4,19 @@ pipeline{
         jdk 'jdk21'
         maven 'mvn3'
     }
+    
+    environment {
+        APP_NAME = "spring-app"
+        RELEASE = "1.0.0"
+        DOCKER_USER = "docsourav1992"
+        DOCKER_PASS = 'dockerhub'
+        IMAGE_NAME = "${DOCKER_USER}" + "/" + "${APP_NAME}"
+        IMAGE_TAG = "${RELEASE}-${BUILD_NUMBER}"
+
+    }
+    
+    
+    
     stages{
         stage("Cleanup Workspace"){
             steps {
@@ -55,7 +68,28 @@ pipeline{
             steps {
                 sh "mvn clean package"
             }
+            post {
+                success {
+                    archiveArtifacts artifacts: 'target/spring-petclinic-*.jar', fingerprint: true
+                }
+            }
 
+        }
+
+
+        stage("Build & Push Docker Image") {
+            steps {
+                script {
+                    docker.withRegistry('',DOCKER_PASS) {
+                        docker_image = docker.build "${IMAGE_NAME}"
+                    }
+
+                    docker.withRegistry('',DOCKER_PASS) {
+                        docker_image.push("${IMAGE_TAG}")
+                        docker_image.push('latest')
+                    }
+                }
+            }
         }
 
 
@@ -67,5 +101,10 @@ pipeline{
         //     }
 
         // }
+
+    
+    
+
+
     }
 }
