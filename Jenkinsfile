@@ -1,56 +1,51 @@
-pipeline{
+pipeline {
     agent any
+
     tools {
         jdk 'jdk21'
         maven 'mvn3'
     }
-    
-    environment {
-        APP_NAME = "spring-app"
-        RELEASE = "1.0.0"
-        DOCKER_USER = "docsourav1992"
-        DOCKER_PASS = 'dockerhub'
-        IMAGE_NAME = "${DOCKER_USER}" + "/" + "${APP_NAME}"
-        IMAGE_TAG = "${RELEASE}-${BUILD_NUMBER}"
 
+    environment {
+        APP_NAME    = "spring-app"
+        RELEASE     = "1.0.0"
+        DOCKER_USER = "docsourav1992"
+        IMAGE_NAME  = "${DOCKER_USER}/${APP_NAME}"
+        IMAGE_TAG   = "${RELEASE}-${BUILD_NUMBER}"
     }
-    
-    
-    
-    stages{
-        stage("Cleanup Workspace"){
+
+    stages {
+        stage("Cleanup Workspace") {
             steps {
                 cleanWs()
             }
-
         }
-    
-        stage("Checkout from SCM"){
+
+        stage("Checkout from SCM") {
             steps {
                 git branch: 'main', url: 'https://github.com/souravgit2021/spring-petclinic-app.git'
             }
-
         }
 
-        stage("Test Application"){
+        stage("Build & Test Application") {
             steps {
-                // jacoco:report is bound to prepare-package in the pom, so invoke it explicitly
-                // to produce target/site/jacoco/jacoco.xml for SonarQube coverage
-                sh "mvn clean test jacoco:report"
+                // Compiles, runs tests, packages the JAR, and produces the JaCoCo XML report in a single pass
+                sh "mvn clean package jacoco:report"
             }
             post {
                 always {
                     junit allowEmptyResults: true, testResults: 'target/surefire-reports/TEST-*.xml'
                 }
+                success {
+                    archiveArtifacts artifacts: 'target/spring-petclinic-*.jar', fingerprint: true
+                }
             }
-
         }
 
-
-        stage("Sonarqube Analysis") {
+        stage("SonarQube Analysis") {
             steps {
                 script {
-                    withSonarQubeEnv(credentialsId: 'sonar-token') {
+                    withSonarQubeEnv('sonar') {
                         sh '''
                             mvn org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
                                 -Dsonar.java.binaries=target/classes \
@@ -60,62 +55,66 @@ pipeline{
                     }
                 }
             }
-
         }
 
+        // stage("Quality Gate") {
+        //     steps {
+        //         timeout(time: 5, unit: 'MINUTES') {
+        //             script {
+        //                 waitForQualityGate abortPipeline: true
+        //             }
+        //         }
+        //     }
+        // }
 
-        stage("Build Application"){
+        stage("Build Docker Image") {
             steps {
-                sh "mvn clean package"
+                sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} -t ${IMAGE_NAME}:latest ."
             }
-            post {
-                success {
-                    archiveArtifacts artifacts: 'target/spring-petclinic-*.jar', fingerprint: true
-                }
-            }
-
         }
 
+        stage("Trivy Security Scan") {
+            steps {
+                sh """
+                    docker run --rm \
+                        -u root \
+                        -v /var/run/docker.sock:/var/run/docker.sock \
+                        -v \${WORKSPACE}:/workspace \
+                        aquasec/trivy:latest image \
+                        --format table \
+                        --output /workspace/trivy-report.txt \
+                        --severity HIGH,CRITICAL \
+                        --exit-code 0 \
+                        ${IMAGE_NAME}:${IMAGE_TAG}
+                """
+                archiveArtifacts artifacts: 'trivy-report.txt', allowEmptyArchive: true
+            }
+        }
 
-        stage("Build & Push Docker Image") {
-        
-        steps {
-            withCredentials([usernamePassword(
-                credentialsId: 'dockerhub', 
-                usernameVariable: 'DOCKER_USER_ID', 
-                passwordVariable: 'DOCKER_USER_PWD'
-            )]) {
-                sh '''
-                    # 1. Authenticate securely
-                    echo "$DOCKER_USER_PWD" | docker login -u "$DOCKER_USER_ID" --password-stdin
-
-                    # 2. Build with both version and latest tags
-                    docker build -t ${IMAGE_NAME}:${IMAGE_TAG} -t ${IMAGE_NAME}:latest .
-
-                    # 3. Push both tags
-                    docker push ${IMAGE_NAME}:${IMAGE_TAG}
-                    docker push ${IMAGE_NAME}:latest
-
-                    # 4. Clean up authentication session
-                    docker logout
-                '''
+        stage("Push to Docker Hub") {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub',
+                    usernameVariable: 'DOCKER_USER_ID',
+                    passwordVariable: 'DOCKER_USER_PWD'
+                )]) {
+                    sh '''
+                        echo "$DOCKER_USER_PWD" | docker login -u "$DOCKER_USER_ID" --password-stdin
+                        docker push ${IMAGE_NAME}:${IMAGE_TAG}
+                        docker push ${IMAGE_NAME}:latest
+                        docker logout
+                    '''
+                }
             }
         }
     }
 
-
-        // stage("Quality Gate") {
-        //     steps {
-        //         script {
-        //             waitForQualityGate abortPipeline: false, credentialsId: 'jenkins-sonarqube-token'
-        //         }
-        //     }
-
-        // }
-
-    
-    
-
-
+    post {
+        always {
+            // Remove local images created in this build to prevent agent disk exhaustion
+            sh """
+                docker rmi ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest || true
+            """
+        }
     }
 }
