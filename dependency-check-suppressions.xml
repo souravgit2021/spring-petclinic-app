@@ -11,4 +11,11 @@
   </suppress>
 -->
 <suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+  <suppress>
+    <notes>False positive: CVE-2022-31691 affects the Spring Tools 4 IDE / VSCode extensions
+      (vmware:spring_boot_tools), not the spring-boot-devtools library. It is matched only via the
+      CPE name. devtools is also an optional dependency and is not packaged in the runnable jar.</notes>
+    <packageUrl regex="true">^pkg:maven/org\.springframework\.boot/spring-boot-devtools@.*$</packageUrl>
+    <cve>CVE-2022-31691</cve>
+  </suppress>
 </suppressions>
