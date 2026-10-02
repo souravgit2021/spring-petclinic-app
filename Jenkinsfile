@@ -42,6 +42,31 @@ pipeline {
             }
         }
 
+        stage("OWASP Dependency-Check (SCA)") {
+            steps {
+                // Scans the Maven dependency tree against the NVD and fails the build on any
+                // vulnerability with CVSS >= 7. The NVD database is cached in the agent's ~/.m2,
+                // so only the first run does the full (slow) download.
+                withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_API_KEY')]) {
+                    sh '''
+                        mvn org.owasp:dependency-check-maven:13.0.0:check \
+                            -DnvdApiKeyEnvironmentVariable=NVD_API_KEY \
+                            -DfailBuildOnCVSS=7 \
+                            -DsuppressionFile=dependency-check-suppressions.xml \
+                            -Dformats=HTML,JSON,XML \
+                            -DossIndexAnalyzerEnabled=false \
+                            -DassemblyAnalyzerEnabled=false \
+                            -DnodeAuditAnalyzerEnabled=false
+                    '''
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'target/dependency-check-report.*', allowEmptyArchive: true
+                }
+            }
+        }
+
         stage("SonarQube Analysis") {
             steps {
                 script {
