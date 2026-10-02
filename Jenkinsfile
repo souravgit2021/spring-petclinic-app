@@ -34,16 +34,18 @@ pipeline{
 
         }
        
-       stage("Sonarqube Analysis") {
-            steps {
-                script {
-                    withSonarQubeEnv(credentialsId: 'sonar-token') {
-                        sh "mvn sonar:sonar"
-                    }
-                }
+       stage('SonarQube Analysis') {
+        steps {
+         script {
+            withSonarQubeEnv(credentialsId: 'sonar-token') {
+                sh '''
+                    mvn -B clean verify \
+                    org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
+                '''
             }
-
         }
+    }
+}
        
        
         }
