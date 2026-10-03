@@ -105,11 +105,11 @@ pipeline {
                 // Requires the "Nexus Artifact Uploader" Jenkins plugin. maven-snapshots only accepts
                 // -SNAPSHOT versions, so the version is read from pom.xml (e.g. 4.0.0-SNAPSHOT); each
                 // build overwrites the previous upload of that version.
-                script {
-                    def projectVersion = sh(
-                        script: 'mvn -s "$MAVEN_SETTINGS" -q help:evaluate -Dexpression=project.version -DforceStdout',
-                        returnStdout: true
-                    ).trim()
+                // script {
+                //     def projectVersion = sh(
+                //         script: 'mvn -s "$MAVEN_SETTINGS" -q help:evaluate -Dexpression=project.version -DforceStdout',
+                //         returnStdout: true
+                //     ).trim()
 
                     nexusArtifactUploader(
                         nexusVersion: 'nexus3',
@@ -118,12 +118,12 @@ pipeline {
                         repository: 'maven-snapshots',
                         credentialsId: 'nexus-creds',
                         groupId: 'org.springframework.samples',
-                        version: projectVersion,
+                        version: 4.0.0-SNAPSHOT,
                         artifacts: [
-                            [artifactId: 'spring-petclinic', classifier: '', file: "target/spring-petclinic-${projectVersion}.jar", type: 'jar']
+                            [artifactId: 'spring-petclinic', classifier: '', file: "target/spring-petclinic-4.0.0-SNAPSHOT.jar", type: 'jar']
                         ]
                     )
-                }
+                // }
             }
         }
 
