@@ -32,14 +32,6 @@ pipeline {
             }
         }
 
-        stage("Set Release Version") {
-            steps {
-                // Nexus release repositories reject -SNAPSHOT versions and re-deploys of an existing
-                // version, so every build gets a unique release version matching the Docker tag
-                sh 'mvn -s "$MAVEN_SETTINGS" versions:set -DnewVersion="$IMAGE_TAG" -DgenerateBackupPoms=false'
-            }
-        }
-
         stage("Test Application") {
             steps {
                 // Compiles and runs the tests; jacoco:report is bound to prepare-package in the pom,
@@ -109,9 +101,30 @@ pipeline {
 
         stage("Publish to Nexus") {
             steps {
-                // Uploads the jar and pom to the release repository from <distributionManagement>
-                // in pom.xml, authenticating with the 'nexus-releases' server in the settings file
-                sh 'mvn -s "$MAVEN_SETTINGS" deploy -DskipTests'
+                // Uploads the jar (and its pom, so Maven consumers can resolve it) to maven-snapshots.
+                // Requires the "Nexus Artifact Uploader" Jenkins plugin. maven-snapshots only accepts
+                // -SNAPSHOT versions, so the version is read from pom.xml (e.g. 4.0.0-SNAPSHOT); each
+                // build overwrites the previous upload of that version.
+                script {
+                    def projectVersion = sh(
+                        script: 'mvn -s "$MAVEN_SETTINGS" -q help:evaluate -Dexpression=project.version -DforceStdout',
+                        returnStdout: true
+                    ).trim()
+
+                    nexusArtifactUploader(
+                        nexusVersion: 'nexus3',
+                        protocol: 'http',
+                        nexusUrl: '192.168.1.11:8081',
+                        repository: 'maven-snapshots',
+                        credentialsId: 'nexus-creds',
+                        groupId: 'org.springframework.samples',
+                        version: projectVersion,
+                        artifacts: [
+                            [artifactId: 'spring-petclinic', classifier: '', file: "target/spring-petclinic-${projectVersion}.jar", type: 'jar'],
+                            [artifactId: 'spring-petclinic', classifier: '', file: 'pom.xml', type: 'pom']
+                        ]
+                    )
+                }
             }
         }
 

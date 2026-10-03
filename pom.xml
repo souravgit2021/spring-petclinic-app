@@ -187,16 +187,6 @@
     </dependency>
   </dependencies>
 
-  <!-- Target of 'mvn deploy'. The id must match a <server> in .mvn/nexus-settings.xml,
-       which supplies the credentials. -->
-  <distributionManagement>
-    <repository>
-      <id>nexus-releases</id>
-      <name>Nexus release repository</name>
-      <url>http://192.168.1.11:8081/repository/maven-releases/</url>
-    </repository>
-  </distributionManagement>
-
   <build>
     <plugins>
       <plugin>

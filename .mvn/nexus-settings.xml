@@ -2,8 +2,8 @@
 <!--
   Maven settings used by the Jenkins pipeline (mvn -s .mvn/nexus-settings.xml ...).
 
-  - Every dependency and plugin download goes through the Nexus proxy of Maven Central.
-  - Build artifacts are deployed to the Nexus release repository (see distributionManagement in pom.xml).
+  Every dependency and plugin download goes through the Nexus proxy of Maven Central.
+  (Build artifacts are uploaded to maven-releases by the Jenkins nexusArtifactUploader step, not by Maven.)
 
   No secrets are stored here: NEXUS_USR / NEXUS_PSW are injected by Jenkins from the
   'nexus-creds' credential (environment { NEXUS = credentials('nexus-creds') }).
@@ -14,12 +14,6 @@
     <!-- Credentials for downloading through the mirror below (ids must match) -->
     <server>
       <id>nexus</id>
-      <username>${env.NEXUS_USR}</username>
-      <password>${env.NEXUS_PSW}</password>
-    </server>
-    <!-- Credentials for 'mvn deploy' (id must match distributionManagement in pom.xml) -->
-    <server>
-      <id>nexus-releases</id>
       <username>${env.NEXUS_USR}</username>
       <password>${env.NEXUS_PSW}</password>
     </server>
