@@ -118,7 +118,7 @@ pipeline {
                         repository: 'maven-snapshots',
                         credentialsId: 'nexus-creds',
                         groupId: 'org.springframework.samples',
-                        version: 4.0.0-SNAPSHOT,
+                        version: '4.0.0-SNAPSHOT',
                         artifacts: [
                             [artifactId: 'spring-petclinic', classifier: '', file: "target/spring-petclinic-4.0.0-SNAPSHOT.jar", type: 'jar']
                         ]
