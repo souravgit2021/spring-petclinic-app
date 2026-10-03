@@ -12,6 +12,11 @@ pipeline {
         DOCKER_USER = "docsourav1992"
         IMAGE_NAME  = "${DOCKER_USER}/${APP_NAME}"
         IMAGE_TAG   = "${RELEASE}-${BUILD_NUMBER}"
+
+        // Nexus username/password credential; Jenkins exposes it as NEXUS_USR / NEXUS_PSW (masked in logs)
+        NEXUS          = credentials('nexus-creds')
+        // Routes all Maven downloads through Nexus and holds the deploy server ids
+        MAVEN_SETTINGS = ".mvn/nexus-settings.xml"
     }
 
     stages {
@@ -27,11 +32,19 @@ pipeline {
             }
         }
 
+        stage("Set Release Version") {
+            steps {
+                // Nexus release repositories reject -SNAPSHOT versions and re-deploys of an existing
+                // version, so every build gets a unique release version matching the Docker tag
+                sh 'mvn -s "$MAVEN_SETTINGS" versions:set -DnewVersion="$IMAGE_TAG" -DgenerateBackupPoms=false'
+            }
+        }
+
         stage("Test Application") {
             steps {
                 // Compiles and runs the tests; jacoco:report is bound to prepare-package in the pom,
                 // so invoke it explicitly to produce target/site/jacoco/jacoco.xml for SonarQube
-                sh "mvn clean test jacoco:report"
+                sh 'mvn -s "$MAVEN_SETTINGS" clean test jacoco:report'
             }
             post {
                 always {
@@ -47,7 +60,7 @@ pipeline {
                 // so only the first run does the full (slow) download.
                 withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_API_KEY')]) {
                     sh '''
-                        mvn org.owasp:dependency-check-maven:13.0.0:check \
+                        mvn -s "$MAVEN_SETTINGS" org.owasp:dependency-check-maven:13.0.0:check \
                             -DnvdApiKeyEnvironmentVariable=NVD_API_KEY \
                             -DfailBuildOnCVSS=7 \
                             -DsuppressionFile=dependency-check-suppressions.xml \
@@ -70,7 +83,7 @@ pipeline {
                 script {
                     withSonarQubeEnv('sonar') {
                         sh '''
-                            mvn org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
+                            mvn -s "$MAVEN_SETTINGS" org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
                                 -Dsonar.java.binaries=target/classes \
                                 -Dsonar.junit.reportPaths=target/surefire-reports \
                                 -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
@@ -84,13 +97,21 @@ pipeline {
         stage("Build Application") {
             steps {
                 // Tests already passed in the previous stage. No 'clean', so the test and
-                // coverage reports in target/ are kept for the SonarQube stage.
-                sh "mvn package -DskipTests"
+                // coverage reports in target/ are kept.
+                sh 'mvn -s "$MAVEN_SETTINGS" package -DskipTests'
             }
             post {
                 success {
                     archiveArtifacts artifacts: 'target/spring-petclinic-*.jar', fingerprint: true
                 }
+            }
+        }
+
+        stage("Publish to Nexus") {
+            steps {
+                // Uploads the jar and pom to the release repository from <distributionManagement>
+                // in pom.xml, authenticating with the 'nexus-releases' server in the settings file
+                sh 'mvn -s "$MAVEN_SETTINGS" deploy -DskipTests'
             }
         }
 

@@ -3,7 +3,10 @@
 		"-//Puppy Crawl//DTD Check Configuration 1.2//EN"
 		"https://checkstyle.org/dtds/configuration_1_2.dtd">
 <module name="com.puppycrawl.tools.checkstyle.Checker">
-	<module name="io.spring.nohttp.checkstyle.check.NoHttpCheck"/>
+	<module name="io.spring.nohttp.checkstyle.check.NoHttpCheck">
+		<!-- Internal Nexus repository manager is only served over plain HTTP -->
+		<property name="allowlist" value="^http://192\.168\.1\.11:8081/.*"/>
+	</module>
 	<module name="SuppressionFilter">
 		<property name="file" value="${config_loc}/nohttp-checkstyle-suppressions.xml"/>
 	</module>
