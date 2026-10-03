@@ -180,6 +180,45 @@ pipeline {
                 }
             }
         }
+
+        stage("Update GitOps Manifest") {
+            environment {
+                GITOPS_REPO   = "github.com/souravgit2021/gitops-springpetclinic.git"
+                GITOPS_BRANCH = "main"
+                MANIFEST_FILE = "deployment.yaml"
+            }
+            steps {
+                // Checked out into a sub-folder so it does not mix with the application sources
+                dir('gitops') {
+                    git branch: "${GITOPS_BRANCH}", url: "https://${GITOPS_REPO}",
+                        credentialsId: 'github-token', changelog: false, poll: false
+
+                    withCredentials([usernamePassword(
+                        credentialsId: 'github-token',
+                        usernameVariable: 'GIT_USER',
+                        passwordVariable: 'GIT_TOKEN'
+                    )]) {
+                        sh '''
+                            # Point the container image at the image pushed by this build. Only the
+                            # image reference is replaced, so the rest of the line is left untouched.
+                            sed -i -E "s#^([[:space:]]*image:[[:space:]]*)[^[:space:]]+#\\1${IMAGE_NAME}:${IMAGE_TAG}#" "$MANIFEST_FILE"
+                            grep -n "image:" "$MANIFEST_FILE"
+
+                            if git diff --quiet -- "$MANIFEST_FILE"; then
+                                echo "$MANIFEST_FILE already uses ${IMAGE_NAME}:${IMAGE_TAG}, nothing to push"
+                                exit 0
+                            fi
+
+                            git config user.name  "Jenkins"
+                            git config user.email "jenkins@localhost"
+                            git add "$MANIFEST_FILE"
+                            git commit -m "Update image to ${IMAGE_NAME}:${IMAGE_TAG} (build #${BUILD_NUMBER}) [skip ci]"
+                            git push "https://${GIT_USER}:${GIT_TOKEN}@${GITOPS_REPO}" "HEAD:${GITOPS_BRANCH}"
+                        '''
+                    }
+                }
+            }
+        }
     }
 
     post {
