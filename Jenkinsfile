@@ -101,7 +101,7 @@ pipeline {
 
         stage("Publish to Nexus") {
             steps {
-                // Uploads the jar (and its pom, so Maven consumers can resolve it) to maven-snapshots.
+                // Uploads only the built jar to maven-snapshots.
                 // Requires the "Nexus Artifact Uploader" Jenkins plugin. maven-snapshots only accepts
                 // -SNAPSHOT versions, so the version is read from pom.xml (e.g. 4.0.0-SNAPSHOT); each
                 // build overwrites the previous upload of that version.
@@ -120,8 +120,7 @@ pipeline {
                         groupId: 'org.springframework.samples',
                         version: projectVersion,
                         artifacts: [
-                            [artifactId: 'spring-petclinic', classifier: '', file: "target/spring-petclinic-${projectVersion}.jar", type: 'jar'],
-                            [artifactId: 'spring-petclinic', classifier: '', file: 'pom.xml', type: 'pom']
+                            [artifactId: 'spring-petclinic', classifier: '', file: "target/spring-petclinic-${projectVersion}.jar", type: 'jar']
                         ]
                     )
                 }
